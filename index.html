@@ -182,10 +182,12 @@
       Blue = light rain/drizzle · Yellow = heavy rain (~¼"/hr) · Orange = intense (~½"/hr) ·
       Red = torrential (~1"+/hr) · Pink/white = hail or extreme · Snow shows in light blue when present
     </div>
-    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;justify-content:center;">
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;justify-content:center;flex-wrap:wrap;">
       <button class="refresh-btn" id="radarPrev">◀</button>
       <button class="refresh-btn" id="radarPlay">▶ Play</button>
       <button class="refresh-btn" id="radarNext">▶|</button>
+      <button class="refresh-btn" id="radarSrc">NWS (zoom)</button>
+      <button class="refresh-btn" id="radarFull">⛶ Full</button>
     </div>
   </section>
 
@@ -446,25 +448,50 @@
     el.className = isErr ? 'status-line err' : 'status-line';
   }
 
-  // ---------- live doppler radar (RainViewer + Leaflet) ----------
-  var map = null, radarLayers = [], radarTimes = [], radarIdx = 0, playTimer = null;
+  // ---------- live doppler radar (NWS NEXRAD via Iowa State + Leaflet) ----------
+  var map = null, radarTimes = [], radarIdx = 0, radarSource = 'nexrad';
 
   function radarInit(loc) {
-    if (map) { map.setView([loc.lat, loc.lon], 6); return; }
-    map = L.map('map', { zoomControl: false, attributionControl: false, maxZoom: 6, minZoom: 4 }).setView([loc.lat, loc.lon], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 6 }).addTo(map);
-    L.circleMarker([loc.lat, loc.lon], { radius: 5, color: '#2fe0ff', weight: 2, fillOpacity: 0.6 }).addTo(map);
+    if (map) { map.setView([loc.lat, loc.lon], 9); return; }
+    map = L.map('map', { zoomControl: false, attributionControl: false, maxZoom: 12, minZoom: 4 }).setView([loc.lat, loc.lon], 9);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 12 }).addTo(map);
+    L.circleMarker([loc.lat, loc.lon], { radius: 6, color: '#2fe0ff', weight: 2, fillOpacity: 0.7 }).addTo(map).bindTooltip('You');
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     loadRadarFrames();
     // Container may have been sized after init; force tile reflow
     setTimeout(function () { map.invalidateSize(); }, 300);
     window.addEventListener('resize', function () { map.invalidateSize(); });
+    document.addEventListener('fullscreenchange', function () {
+      setTimeout(function () { map.invalidateSize(); }, 120);
+    });
+    $('radarFull').addEventListener('click', function () {
+      var el = document.getElementById('map');
+      if (!document.fullscreenElement) {
+        if (el.requestFullscreen) el.requestFullscreen().catch(function () {});
+      } else {
+        document.exitFullscreen();
+      }
+    });
     $('radarPrev').addEventListener('click', function () { stopRadarPlay(); showRadarFrame(radarIdx - 1); });
     $('radarNext').addEventListener('click', function () { stopRadarPlay(); showRadarFrame(radarIdx + 1); });
     $('radarPlay').addEventListener('click', toggleRadarPlay);
+    $('radarSrc').addEventListener('click', toggleRadarSource);
   }
 
+  // Fullscreen: map gets a dark backdrop + full viewport height
+  (function () {
+    var s = document.createElement('style');
+    s.textContent = '#map:fullscreen { height: 100vh !important; border-radius: 0; background: #0a1118; }';
+    document.head.appendChild(s);
+  })();
+
   function loadRadarFrames() {
+    if (radarSource === 'nexrad') {
+      // Iowa Environmental Mesonet live NEXRAD composite — street zoom, single latest frame
+      showRadarLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png');
+      $('radarTime').textContent = 'NWS NEXRAD (live)';
+      return;
+    }
     fetchJSON('https://api.rainviewer.com/public/weather-maps.json').then(function (d) {
       var past = (d.radar && d.radar.past) || [];
       if (!past.length) return;
@@ -481,9 +508,20 @@
     radarIdx = ((idx % radarTimes.length) + radarTimes.length) % radarTimes.length;
     var f = radarTimes[radarIdx];
     var url = 'https://tilecache.rainviewer.com' + f.path + '/256/{z}/{x}/{y}/4/1_1.png';
-    if (map._radarLayer) map.removeLayer(map._radarLayer);
-    map._radarLayer = L.tileLayer(url, { opacity: 0.8, maxZoom: 6, minZoom: 4 }).addTo(map);
+    showRadarLayer(url);
     $('radarTime').textContent = new Date(f.time * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function showRadarLayer(url) {
+    if (map._radarLayer) map.removeLayer(map._radarLayer);
+    map._radarLayer = L.tileLayer(url, { opacity: 0.8, maxZoom: 12, minZoom: 4 }).addTo(map);
+  }
+
+  function toggleRadarSource() {
+    radarSource = radarSource === 'nexrad' ? 'rainviewer' : 'nexrad';
+    stopRadarPlay();
+    $('radarSrc').textContent = radarSource === 'nexrad' ? 'NWS (zoom)' : 'RainViewer (loop)';
+    loadRadarFrames();
   }
 
   function toggleRadarPlay() {
