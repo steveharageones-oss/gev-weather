@@ -186,6 +186,9 @@
       Snow shows in light blue when present
     </div>
     <div style="display:flex;gap:8px;margin-top:8px;align-items:center;justify-content:center;flex-wrap:wrap;">
+      <button class="refresh-btn" id="radarPrev">◀</button>
+      <button class="refresh-btn" id="radarPlay">▶ Play</button>
+      <button class="refresh-btn" id="radarNext">▶|</button>
       <button class="refresh-btn" id="radarFull">⛶ Full</button>
     </div>
   </section>
@@ -449,6 +452,9 @@
 
   // ---------- live doppler radar (NWS NEXRAD via Iowa State + Leaflet) ----------
   var map = null;
+  // IEM archives 5-min NEXRAD mosaics 5..55 minutes old (zero-padded, modulo 5)
+  var NEXRAD_FRAMES = [55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5, 0]; // oldest → newest
+  var radarIdx = 0, radarAnim = null;
 
   function radarInit(loc) {
     if (map) { map.setView([loc.lat, loc.lon], 9); return; }
@@ -471,6 +477,9 @@
         document.exitFullscreen();
       }
     });
+    $('radarPrev').addEventListener('click', function () { stopRadarLoop(); showRadarFrame(radarIdx - 1); });
+    $('radarNext').addEventListener('click', function () { stopRadarLoop(); showRadarFrame(radarIdx + 1); });
+    $('radarPlay').addEventListener('click', toggleRadarPlay);
   }
 
   // Fullscreen: map gets a dark backdrop + full viewport height
@@ -481,14 +490,40 @@
   })();
 
   function loadRadarFrames() {
-    // Iowa Environmental Mesonet live NEXRAD composite — street zoom, single latest frame
-    showRadarLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png');
-    $('radarTime').textContent = 'NWS NEXRAD (live)';
+    // Start on the newest frame; user can step back or hit Play for the hour loop
+    radarIdx = NEXRAD_FRAMES.length - 1;
+    showRadarFrame(radarIdx);
+  }
+
+  function radarTileUrl(minsAgo) {
+    var layer = minsAgo === 0 ? 'nexrad-n0q-900913' : 'nexrad-n0q-900913-m' + (minsAgo < 10 ? '0' + minsAgo : minsAgo) + 'm';
+    return 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/' + layer + '/{z}/{x}/{y}.png';
+  }
+
+  function showRadarFrame(idx) {
+    radarIdx = ((idx % NEXRAD_FRAMES.length) + NEXRAD_FRAMES.length) % NEXRAD_FRAMES.length;
+    var m = NEXRAD_FRAMES[radarIdx];
+    var url = m === 0
+      ? 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png'
+      : 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913-m' + (m < 10 ? '0' + m : m) + 'm/{z}/{x}/{y}.png';
+    showRadarLayer(url);
+    $('radarTime').textContent = m === 0 ? 'NWS NEXRAD (live)' : 'NEXRAD −' + m + ' min';
   }
 
   function showRadarLayer(url) {
     if (map._radarLayer) map.removeLayer(map._radarLayer);
     map._radarLayer = L.tileLayer(url, { opacity: 0.8, maxZoom: 12, minZoom: 4 }).addTo(map);
+  }
+
+  function toggleRadarPlay() {
+    if (radarAnim) { stopRadarLoop(); return; }
+    radarAnim = setInterval(function () { showRadarFrame(radarIdx + 1); }, 600);
+    $('radarPlay').textContent = '⏸ Pause';
+  }
+
+  function stopRadarLoop() {
+    if (radarAnim) { clearInterval(radarAnim); radarAnim = null; }
+    var b = $('radarPlay'); if (b) b.textContent = '▶ Play';
   }
 
   function boot() {
