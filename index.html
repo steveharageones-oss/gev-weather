@@ -164,13 +164,15 @@
   <section class="card">
     <div class="strip-title">Live doppler radar <span style="text-transform:none;letter-spacing:0">· <span id="radarTime">—</span></span></div>
     <div id="map" style="height:260px;border-radius:8px;overflow:hidden;position:relative;z-index:1;"></div>
-    <div style="display:flex;gap:0;margin-top:8px;border-radius:4px;overflow:hidden;height:10px;">
-      <div style="flex:1;background:#00a3e0"></div>
-      <div style="flex:1;background:#005588"></div>
-      <div style="flex:1;background:#ffee00"></div>
-      <div style="flex:1;background:#ffaa00"></div>
-      <div style="flex:1;background:#ff4400"></div>
-      <div style="flex:1;background:#c10000"></div>
+    <div id="radarLegend" style="display:flex;gap:0;margin-top:8px;border-radius:4px;overflow:hidden;height:10px;">
+      <div style="flex:1;background:#4568a6"></div>
+      <div style="flex:1;background:#5eadcf"></div>
+      <div style="flex:1;background:#43d67e"></div>
+      <div style="flex:1;background:#0eb314"></div>
+      <div style="flex:1;background:#0b840e"></div>
+      <div style="flex:1;background:#ffd800"></div>
+      <div style="flex:1;background:#ffa700"></div>
+      <div style="flex:1;background:#f10000"></div>
     </div>
     <div style="display:flex;gap:0;font-size:0.62rem;color:#7fa8bc;margin-top:3px;">
       <span style="flex:1;text-align:left">light</span>
@@ -179,14 +181,11 @@
       <span style="flex:1;text-align:right">extreme</span>
     </div>
     <div style="font-size:0.68rem;color:#7fa8bc;margin-top:6px;line-height:1.5">
-      Blue = light rain/drizzle · Yellow = heavy rain (~¼"/hr) · Orange = intense (~½"/hr) ·
-      Red = torrential (~1"+/hr) · Pink/white = hail or extreme · Snow shows in light blue when present
+      Blue = drizzle · Green = light–moderate rain · Yellow = heavy (~¼"/hr) ·
+      Orange = intense (~½"/hr) · Red = torrential (~1"+/hr) · Magenta = hail ·
+      Snow shows in light blue when present
     </div>
     <div style="display:flex;gap:8px;margin-top:8px;align-items:center;justify-content:center;flex-wrap:wrap;">
-      <button class="refresh-btn" id="radarPrev">◀</button>
-      <button class="refresh-btn" id="radarPlay">▶ Play</button>
-      <button class="refresh-btn" id="radarNext">▶|</button>
-      <button class="refresh-btn" id="radarSrc">NWS (zoom)</button>
       <button class="refresh-btn" id="radarFull">⛶ Full</button>
     </div>
   </section>
@@ -204,7 +203,7 @@
 
 <footer>
   Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0)
-  · Radar by <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a>
+  · Radar by <a href="https://mesonet.agron.iastate.edu/docs/nexrad_mosaic">Iowa State U. (NWS NEXRAD)</a>
   · Map tiles © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors
   · Location by <a href="https://nominatim.openstreetmap.org/">OpenStreetMap Nominatim</a>
 </footer>
@@ -449,7 +448,7 @@
   }
 
   // ---------- live doppler radar (NWS NEXRAD via Iowa State + Leaflet) ----------
-  var map = null, radarTimes = [], radarIdx = 0, radarSource = 'nexrad';
+  var map = null;
 
   function radarInit(loc) {
     if (map) { map.setView([loc.lat, loc.lon], 9); return; }
@@ -472,10 +471,6 @@
         document.exitFullscreen();
       }
     });
-    $('radarPrev').addEventListener('click', function () { stopRadarPlay(); showRadarFrame(radarIdx - 1); });
-    $('radarNext').addEventListener('click', function () { stopRadarPlay(); showRadarFrame(radarIdx + 1); });
-    $('radarPlay').addEventListener('click', toggleRadarPlay);
-    $('radarSrc').addEventListener('click', toggleRadarSource);
   }
 
   // Fullscreen: map gets a dark backdrop + full viewport height
@@ -486,53 +481,14 @@
   })();
 
   function loadRadarFrames() {
-    if (radarSource === 'nexrad') {
-      // Iowa Environmental Mesonet live NEXRAD composite — street zoom, single latest frame
-      showRadarLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png');
-      $('radarTime').textContent = 'NWS NEXRAD (live)';
-      return;
-    }
-    fetchJSON('https://api.rainviewer.com/public/weather-maps.json').then(function (d) {
-      var past = (d.radar && d.radar.past) || [];
-      if (!past.length) return;
-      radarTimes = past.slice(-8); // last ~2 hours of sweeps
-      radarIdx = radarTimes.length - 1;
-      showRadarFrame(radarIdx);
-    }).catch(function () {
-      $('radarTime').textContent = 'radar unavailable';
-    });
-  }
-
-  function showRadarFrame(idx) {
-    if (!radarTimes.length) return;
-    radarIdx = ((idx % radarTimes.length) + radarTimes.length) % radarTimes.length;
-    var f = radarTimes[radarIdx];
-    var url = 'https://tilecache.rainviewer.com' + f.path + '/256/{z}/{x}/{y}/4/1_1.png';
-    showRadarLayer(url);
-    $('radarTime').textContent = new Date(f.time * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    // Iowa Environmental Mesonet live NEXRAD composite — street zoom, single latest frame
+    showRadarLayer('https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png');
+    $('radarTime').textContent = 'NWS NEXRAD (live)';
   }
 
   function showRadarLayer(url) {
     if (map._radarLayer) map.removeLayer(map._radarLayer);
     map._radarLayer = L.tileLayer(url, { opacity: 0.8, maxZoom: 12, minZoom: 4 }).addTo(map);
-  }
-
-  function toggleRadarSource() {
-    radarSource = radarSource === 'nexrad' ? 'rainviewer' : 'nexrad';
-    stopRadarPlay();
-    $('radarSrc').textContent = radarSource === 'nexrad' ? 'NWS (zoom)' : 'RainViewer (loop)';
-    loadRadarFrames();
-  }
-
-  function toggleRadarPlay() {
-    if (map && map._radarAnim) { stopRadarPlay(); return; }
-    map._radarAnim = setInterval(function () { showRadarFrame(radarIdx + 1); }, 700);
-    $('radarPlay').textContent = '⏸ Pause';
-  }
-
-  function stopRadarPlay() {
-    if (map && map._radarAnim) { clearInterval(map._radarAnim); map._radarAnim = null; }
-    var b = $('radarPlay'); if (b) b.textContent = '▶ Play';
   }
 
   function boot() {
