@@ -164,6 +164,24 @@
   <section class="card">
     <div class="strip-title">Live doppler radar <span style="text-transform:none;letter-spacing:0">· <span id="radarTime">—</span></span></div>
     <div id="map" style="height:260px;border-radius:8px;overflow:hidden;position:relative;z-index:1;"></div>
+    <div style="display:flex;gap:0;margin-top:8px;border-radius:4px;overflow:hidden;height:10px;">
+      <div style="flex:1;background:#00a3e0"></div>
+      <div style="flex:1;background:#005588"></div>
+      <div style="flex:1;background:#ffee00"></div>
+      <div style="flex:1;background:#ffaa00"></div>
+      <div style="flex:1;background:#ff4400"></div>
+      <div style="flex:1;background:#c10000"></div>
+    </div>
+    <div style="display:flex;gap:0;font-size:0.62rem;color:#7fa8bc;margin-top:3px;">
+      <span style="flex:1;text-align:left">light</span>
+      <span style="flex:1;text-align:center">moderate</span>
+      <span style="flex:1;text-align:center">heavy</span>
+      <span style="flex:1;text-align:right">extreme</span>
+    </div>
+    <div style="font-size:0.68rem;color:#7fa8bc;margin-top:6px;line-height:1.5">
+      Blue = light rain/drizzle · Yellow = heavy rain (~¼"/hr) · Orange = intense (~½"/hr) ·
+      Red = torrential (~1"+/hr) · Pink/white = hail or extreme · Snow shows in light blue when present
+    </div>
     <div style="display:flex;gap:8px;margin-top:8px;align-items:center;justify-content:center;">
       <button class="refresh-btn" id="radarPrev">◀</button>
       <button class="refresh-btn" id="radarPlay">▶ Play</button>
