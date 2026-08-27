@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a1118">
+<title>God's Eye Weather</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌧️</text></svg>">
+<link rel="manifest" href="manifest.json">
+<style>
+  :root {
+    --bg: #0a1118;
+    --card: #101b26;
+    --card-border: #1c3040;
+    --text: #d8f4ff;
+    --dim: #7fa8bc;
+    --accent: #2fe0ff;
+    --rain: #4db8ff;
+    --snow: #b8e6ff;
+    --dry: #3a5060;
+    --warn: #ffd97a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  h1 { font-size: 1.05rem; color: var(--accent); font-weight: 600; letter-spacing: 0.4px; }
+  .loc { font-size: 0.85rem; color: var(--dim); text-align: right; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .now-main {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 10px;
+  }
+  .now-icon { font-size: 3.2rem; line-height: 1; }
+  .now-main-text { flex: 1; }
+  .now-temp { font-size: 2.6rem; font-weight: 700; color: var(--text); line-height: 1; }
+  .now-feels { font-size: 0.85rem; color: var(--dim); margin-top: 2px; }
+  .now-answer {
+    font-size: 1.25rem; font-weight: 700; margin: 4px 0 2px;
+  }
+  .now-answer.raining { color: var(--rain); }
+  .now-answer.snowing { color: var(--snow); }
+  .now-answer.dry { color: var(--text); }
+  .now-detail { font-size: 0.9rem; color: var(--dim); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .chip {
+    background: rgba(47,224,255,0.07);
+    border: 1px solid rgba(47,224,255,0.18);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 0.8rem;
+  }
+  .chip .lbl { color: var(--dim); }
+  .strip-title { font-size: 0.78rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+  .strip {
+    display: flex; gap: 3px; align-items: flex-end; height: 64px; margin-bottom: 4px;
+  }
+  .strip-cell {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    min-width: 0;
+  }
+  .strip-bar {
+    width: 100%; border-radius: 3px 3px 0 0;
+    background: var(--dry);
+    min-height: 4px;
+  }
+  .strip-cell.rain .strip-bar { background: var(--rain); }
+  .strip-cell.snow .strip-bar { background: var(--snow); }
+  .strip-labels {
+    display: flex; gap: 3px; margin-top: 2px;
+  }
+  .strip-labels span {
+    flex: 1; text-align: center; font-size: 0.62rem; color: var(--dim);
+    white-space: nowrap; overflow: visible;
+  }
+  .strip-cell.now .strip-label-time { color: var(--accent); font-weight: 700; }
+  .day-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 0;
+    border-bottom: 1px solid rgba(28,48,64,0.7);
+  }
+  .day-row:last-child { border-bottom: none; }
+  .day-row.today { font-weight: 600; }
+  .day-name { width: 46px; flex-shrink: 0; font-size: 0.88rem; color: var(--text); }
+  .day-row.today .day-name { color: var(--accent); }
+  .day-bar-wrap { flex: 1; height: 8px; background: rgba(58,80,96,0.4); border-radius: 4px; overflow: hidden; min-width: 0; }
+  .day-bar { height: 100%; border-radius: 3px; background: var(--rain); min-width: 0; }
+  .day-bar.snow { background: var(--snow); }
+  .day-val { width: 74px; text-align: right; font-size: 0.82rem; color: var(--text); flex-shrink: 0; }
+  .day-chance { width: 44px; text-align: right; font-size: 0.78rem; color: var(--dim); flex-shrink: 0; }
+  footer {
+    text-align: center; font-size: 0.72rem; color: var(--dim);
+    margin-top: 16px; padding-bottom: 8px;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  .refresh-btn {
+    background: var(--card); border: 1px solid var(--card-border); color: var(--accent);
+    border-radius: 8px; padding: 6px 14px; font-size: 0.8rem; cursor: pointer;
+  }
+  .refresh-btn:active { background: rgba(47,224,255,0.12); }
+  .status-line {
+    font-size: 0.75rem; color: var(--dim); text-align: center; margin-top: 8px; min-height: 1em;
+  }
+  .status-line.err { color: #ff8a8a; }
+  .loading { text-align: center; padding: 40px 0; color: var(--dim); font-size: 0.9rem; }
+  .hidden { display: none; }
+  #setup {
+    text-align: center; padding: 48px 16px;
+  }
+  #setup h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 10px; }
+  #setup p { color: var(--dim); font-size: 0.88rem; line-height: 1.5; margin-bottom: 18px; }
+  #setup button {
+    background: var(--accent); color: #05131c; border: none; border-radius: 10px;
+    padding: 12px 28px; font-size: 1rem; font-weight: 700; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌧️ God's Eye Weather</h1>
+  <div class="loc" id="loc">Locating…</div>
+</header>
+
+<div id="setup" class="card">
+  <h2>Enable location</h2>
+  <p>This app needs your location to show hyperlocal rain &amp; snow.
+     Nothing is stored or sent anywhere except the weather APIs.</p>
+  <button id="askBtn">Use my location</button>
+</div>
+
+<div id="app" class="hidden">
+  <section class="card" id="nowCard">
+    <div class="now-main">
+      <div class="now-icon" id="nowIcon">🌡️</div>
+      <div class="now-main-text">
+        <div class="now-answer" id="nowAnswer">—</div>
+        <div class="now-detail" id="nowDetail"></div>
+      </div>
+    </div>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <section class="card">
+    <div class="strip-title">Next 2 hours — 15-min precipitation</div>
+    <div class="strip" id="strip"></div>
+    <div class="strip-labels" id="stripLabels"></div>
+  </section>
+
+  <section class="card">
+    <div class="strip-title">Next 7 days</div>
+    <div id="daily"></div>
+  </section>
+
+  <div class="status-line" id="status"></div>
+  <div style="text-align:center; margin-top: 6px;">
+    <button class="refresh-btn" id="refreshBtn">↻ Refresh</button>
+  </div>
+</div>
+
+<footer>
+  Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0)
+  · Location by <a href="https://nominatim.openstreetmap.org/">OpenStreetMap Nominatim</a>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var store = window.localStorage;
+
+  // ---------- WMO weather code → plain English + icon ----------
+  var WMO = {
+    0:  ['Clear', '☀️'],
+    1:  ['Mostly clear', '🌤️'],
+    2:  ['Partly cloudy', '⛅'],
+    3:  ['Overcast', '☁️'],
+    45: ['Fog', '🌫️'], 48: ['Freezing fog', '🌫️'],
+    51: ['Light drizzle', '🌦️'], 53: ['Drizzle', '🌦️'], 55: ['Heavy drizzle', '🌧️'],
+    56: ['Freezing drizzle', '🌧️'], 57: ['Freezing drizzle', '🌧️'],
+    61: ['Light rain', '🌧️'], 63: ['Rain', '🌧️'], 65: ['Heavy rain', '🌧️'],
+    66: ['Freezing rain', '🌧️'], 67: ['Freezing rain', '🌧️'],
+    71: ['Light snow', '🌨️'], 73: ['Snow', '🌨️'], 75: ['Heavy snow', '❄️'],
+    77: ['Snow grains', '🌨️'],
+    80: ['Rain showers', '🌦️'], 81: ['Rain showers', '🌧️'], 82: ['Violent rain showers', '⛈️'],
+    85: ['Snow showers', '🌨️'], 86: ['Heavy snow showers', '❄️'],
+    95: ['Thunderstorm', '⛈️'], 96: ['Thunderstorm + hail', '⛈️'], 99: ['Thunderstorm + hail', '⛈️']
+  };
+  function wmo(code) {
+    return WMO[code] || ['—', '🌡️'];
+  }
+  function isSnow(code) {
+    return (code >= 71 && code <= 77) || code === 85 || code === 86;
+  }
+
+  // ---------- fetch helpers ----------
+  function fetchJSON(url) {
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+
+  function getLocation() {
+    return new Promise(function (resolve, reject) {
+      var saved = store.getItem('gew.coords');
+      if (saved) {
+        try {
+          var p = JSON.parse(saved);
+          if (p && typeof p.lat === 'number' && typeof p.lon === 'number') { resolve(p); return; }
+        } catch (e) { /* fall through to geolocate */ }
+      }
+      if (!navigator.geolocation) { reject(new Error('Geolocation unsupported')); return; }
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          var loc = { lat: +pos.coords.latitude.toFixed(4), lon: +pos.coords.longitude.toFixed(4) };
+          store.setItem('gew_location', JSON.stringify(loc));
+          resolve(loc);
+        },
+        function (err) { reject(new Error(err.message || 'Location denied')); },
+        { enableHighAccuracy: false, timeout: 12000, maximumAge: 5 * 60 * 1000 }
+      );
+    });
+  }
+
+  function reverseGeocode(loc) {
+    var url = 'https://nominatim.openstreetmap.org/reverse?lat=' + loc.lat + '&lon=' + loc.lon +
+              '&format=json&zoom=10';
+    return fetch(url, { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var a = d.address || {};
+        var parts = [a.city || a.town || a.village || a.hamlet || a.county, a.state].filter(Boolean);
+        return parts.join(', ') || 'your area';
+      })
+      .catch(function () { return loc.lat.toFixed(2) + ', ' + loc.lon.toFixed(2); });
+  }
+
+  function loadWeather(loc) {
+    var url = 'https://api.open-meteo.com/v1/forecast' +
+      '?latitude=' + loc.lat + '&longitude=' + loc.lon +
+      '&current=temperature_2m,apparent_temperature,precipitation,weather_code,relative_humidity_2m,wind_speed_10m' +
+      '&minutely_15=precipitation,snowfall,precipitation_probability' +
+      '&daily=precipitation_sum,snowfall_sum,precipitation_probability_max' +
+      '&forecast_minutely_15=96' +
+      '&forecast_days=7&timezone=auto' +
+      '&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph';
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('Weather API HTTP ' + r.status);
+      return r.json();
+    });
+  }
+
+  // ---------- rendering ----------
+  function showNow(cur) {
+    var info = WMO[cur.weather_code] || ['—', '🌡️'];
+    $('nowIcon').textContent = info[1];
+    var ans = $('nowAnswer');
+    var precipNow = (cur.precipitation || 0) > 0;
+    var snowing = cur.snowfall > 0;
+    var rainCode = cur.weather_code >= 51 && cur.weather_code <= 67 || cur.weather_code >= 80 && cur.weather_code <= 82 || cur.weather_code === 95;
+    var snowCode = (cur.weather_code >= 71 && cur.weather_code <= 77) || cur.weather_code === 85 || cur.weather_code === 86;
+    if (snowCode || snowing) {
+      ans.textContent = '❄️ Snowing now';
+      ans.className = 'now-answer snowing';
+    } else if (precipNow) {
+      ans.textContent = '🌧️ Raining now';
+      ans.className = 'now-answer raining';
+    } else {
+      var next = findNextPrecip();
+      if (next !== null) {
+        ans.textContent = 'Dry now — precip possible ' + next;
+      } else {
+        ans.textContent = 'No rain or snow expected in next 24h';
+      }
+      ans.className = 'now-answer';
+    }
+    var detail = info[0] + ' · ' + Math.round(cur.temperature_2m) + '°F (feels ' + Math.round(cur.apparent_temperature) + '°)';
+    $('nowDetail').textContent = detail;
+  }
+
+  function findNextPrecip() {
+    // scan 15-min slots for first nonzero precip/snow
+    for (var i = 0; i < M.time.length; i++) {
+      if ((M.precipitation[i] || 0) > 0 || (M.snowfall[i] || 0) > 0) {
+        var t = new Date(M.time[i]);
+        var mins = Math.round((t - Date.now()) / 60000);
+        if (mins <= 0) return null; // already happening
+        if (mins < 60) return 'in ' + mins + ' min';
+        return 'in ' + Math.round(mins / 60) + ' hr ' + (mins % 60) + ' min';
+      }
+    }
+    return null;
+  }
+
+  function showChips(cur) {
+    var chips = [
+      ['Wind', Math.round(cur.wind_speed_10m) + ' mph'],
+      ['Humidity', Math.round(cur.relative_humidity_2m) + '%'],
+    ];
+    $('chips').innerHTML = chips.map(function (c) {
+      return '<span class="chip"><span class="lbl">' + c[0] + ':</span> ' + c[1] + '</span>';
+    }).join('');
+  }
+
+  function showStrip() {
+    var strip = $('strip');
+    var labels = $('stripLabels');
+    var max = 0;
+    for (var i = 0; i < 16; i++) {
+      var v = (M.precipitation[i] || 0) + (M.snowfall[i] || 0) * 3; // snow scaled up visually
+      if (v > max) max = v;
+    }
+    var html = '';
+    for (var j = 0; j < 16; j++) {
+      var amt = (M.precipitation[j] || 0) + (M.snowfall[j] || 0) * 3;
+      var isSnow = (M.snowfall[j] || 0) > 0;
+      var pct = max > 0 ? Math.max(6, Math.round(100 * amt / max)) : 6;
+      var cls = isSnow ? 'snow' : (amt > 0 ? 'rain' : '');
+      var h = Math.round(6 + 58 * pct / 100);
+      strip.innerHTML += '<div class="strip-cell ' + cls + '" title="' + M.time[j].slice(11, 16) +
+        ' — ' + (M.precipitation_probability[j] || 0) + '% chance">' +
+        '<div class="strip-bar" style="height:' + h + 'px"></div></div>';
+    }
+    // labels at 0, 4, 8, 12
+    var labelHtml = '<div class="strip-label" style="flex:1;text-align:left;font-size:0.62rem;color:#7fa8bc">now</div>';
+    for (var k = 4; k < 16; k += 4) {
+      labelHtml += '<div class="strip-label" style="flex:1;text-align:center;font-size:0.62rem;color:#7fa8bc">' +
+        M.time[k].slice(11, 16) + '</div>';
+    }
+    labels.innerHTML = labelHtml;
+  }
+
+  function showDaily(d) {
+    var out = '';
+    for (var i = 0; i < d.time.length; i++) {
+      var dt = new Date(d.time[i] + 'T12:00:00');
+      var label = i === 0 ? 'Today' : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];
+      var total = (d.precipitation_sum[i] || 0) + (d.snowfall_sum[i] || 0) * 8;
+      var isSnowDay = (d.snowfall_sum[i] || 0) > 0;
+      var pct = Math.min(100, total * 22);
+      out += '<div class="day-row' + (i === 0 ? ' today' : '') + '">' +
+        '<span class="day-name">' + label + '</span>' +
+        '<div class="day-bar-wrap"><div class="day-bar' + (isSnowDay ? ' snow' : '') +
+        '" style="width:' + pct + '%"></div></div>' +
+        '<span class="day-val">' + d.precipitation_sum[i].toFixed(2) + '"</span>' +
+        '<span class="day-chance">' + (d.precipitation_probability_max[i] || 0) + '%</span>' +
+        '</div>';
+    }
+    $('daily').innerHTML = out;
+  }
+
+  // ---------- orchestration ----------
+  var M = null; // minutely data
+  var currentLoc = null;
+
+  function renderAll(data) {
+    M = data.minutely_15;
+    showNow(data.current);
+    showChips(data.current);
+    showStrip();
+    showDaily(data.daily);
+    $('app').classList.remove('hidden');
+    $('setup').classList.add('hidden');
+  }
+
+  function refresh() {
+    var loc = JSON.parse(store.getItem('gew_location') || '{}');
+    if (!loc.lat) { showSetup(); return; }
+    setStatus('Loading…');
+    loadWeather(loc).then(function (data) {
+      renderAll(data);
+      setStatus('Updated ' + new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}));
+    }).catch(function (err) {
+      setStatus('Error: ' + err.message, true);
+    });
+  }
+
+  function showSetup() {
+    $('setup').classList.remove('hidden');
+    $('app').classList.add('hidden');
+  }
+
+  function setStatus(msg, isErr) {
+    var el = $('status');
+    el.textContent = msg || '';
+    el.className = isErr ? 'status-line err' : 'status-line';
+  }
+
+  function boot() {
+    $('refreshBtn').addEventListener('click', refresh);
+    $('askBtn').addEventListener('click', function () {
+      setStatus('Getting location…');
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        var loc = { lat: +pos.coords.latitude.toFixed(4), lon: +pos.coords.longitude.toFixed(4) };
+        store.setItem('gew_location', JSON.stringify(loc));
+        setStatus('Loading weather…');
+        reverseGeocode(loc).then(function (name) {
+          $('loc').textContent = name;
+          return refresh();
+        });
+      }, function (err) {
+        setStatus('Location denied — enable it in browser settings', true);
+      }, { enableHighAccuracy: false, timeout: 12000 });
+    });
+    // If we already have a stored location, go straight to app
+    var loc = store.getItem('gew_location');
+    if (loc) {
+      try {
+        var p = JSON.parse(loc);
+        $('loc').textContent = 'Loading…';
+        reverseGeocode(p).then(function (name) { $('loc').textContent = name; });
+        refresh();
+      } catch (e) { showSetup(); }
+    } else {
+      showSetup();
+    }
+    setInterval(refresh, 10 * 60 * 1000);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
