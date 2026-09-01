@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#0a1118">
 <title>God's Eye Weather</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌧️</text></svg>">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.json">
 <style>
   :root {
@@ -255,28 +257,6 @@
     });
   }
 
-  function getLocation() {
-    return new Promise(function (resolve, reject) {
-      var saved = store.getItem('gew.coords');
-      if (saved) {
-        try {
-          var p = JSON.parse(saved);
-          if (p && typeof p.lat === 'number' && typeof p.lon === 'number') { resolve(p); return; }
-        } catch (e) { /* fall through to geolocate */ }
-      }
-      if (!navigator.geolocation) { reject(new Error('Geolocation unsupported')); return; }
-      navigator.geolocation.getCurrentPosition(
-        function (pos) {
-          var loc = { lat: +pos.coords.latitude.toFixed(4), lon: +pos.coords.longitude.toFixed(4) };
-          store.setItem('gew_location', JSON.stringify(loc));
-          resolve(loc);
-        },
-        function (err) { reject(new Error(err.message || 'Location denied')); },
-        { enableHighAccuracy: false, timeout: 12000, maximumAge: 5 * 60 * 1000 }
-      );
-    });
-  }
-
   function reverseGeocode(loc) {
     var url = 'https://nominatim.openstreetmap.org/reverse?lat=' + loc.lat + '&lon=' + loc.lon +
               '&format=json&zoom=10';
@@ -293,7 +273,7 @@
   function loadWeather(loc) {
     var url = 'https://api.open-meteo.com/v1/forecast' +
       '?latitude=' + loc.lat + '&longitude=' + loc.lon +
-      '&current=temperature_2m,apparent_temperature,precipitation,weather_code,relative_humidity_2m,wind_speed_10m' +
+      '&current=temperature_2m,apparent_temperature,precipitation,snowfall,weather_code,relative_humidity_2m,wind_speed_10m' +
       '&minutely_15=precipitation,snowfall,precipitation_probability' +
       '&daily=precipitation_sum,snowfall_sum,precipitation_probability_max' +
       '&forecast_minutely_15=96' +
@@ -312,7 +292,6 @@
     var ans = $('nowAnswer');
     var precipNow = (cur.precipitation || 0) > 0;
     var snowing = cur.snowfall > 0;
-    var rainCode = cur.weather_code >= 51 && cur.weather_code <= 67 || cur.weather_code >= 80 && cur.weather_code <= 82 || cur.weather_code === 95;
     var snowCode = (cur.weather_code >= 71 && cur.weather_code <= 77) || cur.weather_code === 85 || cur.weather_code === 86;
     if (snowCode || snowing) {
       ans.textContent = '❄️ Snowing now';
@@ -398,7 +377,7 @@
         '<span class="day-name">' + label + '</span>' +
         '<div class="day-bar-wrap"><div class="day-bar' + (isSnowDay ? ' snow' : '') +
         '" style="width:' + pct + '%"></div></div>' +
-        '<span class="day-val">' + d.precipitation_sum[i].toFixed(2) + '"</span>' +
+        '<span class="day-val">' + (d.precipitation_sum[i] || 0).toFixed(2) + '"</span>' +
         '<span class="day-chance">' + (d.precipitation_probability_max[i] || 0) + '%</span>' +
         '</div>';
     }
@@ -439,6 +418,27 @@
     });
   }
 
+  // Fresh GPS fix on boot; quietly falls back to saved coords if denied/timeout.
+  function updateLocation(cb) {
+    if (!navigator.geolocation) { cb(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        var fresh = { lat: +pos.coords.latitude.toFixed(4), lon: +pos.coords.longitude.toFixed(4) };
+        var saved = null;
+        try { saved = JSON.parse(store.getItem('gew_location') || 'null'); } catch (e) {}
+        var moved = !saved || Math.abs(saved.lat - fresh.lat) > 0.001 || Math.abs(saved.lon - fresh.lon) > 0.001;
+        if (moved) {
+          store.setItem('gew_location', JSON.stringify(fresh));
+          reverseGeocode(fresh).then(function (name) { $('loc').textContent = name; });
+          window._pendingRadarLoc = fresh;
+        }
+        cb(moved ? fresh : null); // null = no change, no reload needed
+      },
+      function () { cb(null); }, // denied / timeout / unavailable — keep saved coords
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 10 * 60 * 1000 }
+    );
+  }
+
   function showSetup() {
     $('setup').classList.remove('hidden');
     $('app').classList.add('hidden');
@@ -458,8 +458,8 @@
 
   function radarInit(loc) {
     if (map) { map.setView([loc.lat, loc.lon], 9); return; }
-    map = L.map('map', { zoomControl: false, attributionControl: false, maxZoom: 12, minZoom: 4 }).setView([loc.lat, loc.lon], 9);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 12 }).addTo(map);
+    map = L.map('map', { zoomControl: false, maxZoom: 12, minZoom: 4 }).setView([loc.lat, loc.lon], 9);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 12, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
     L.circleMarker([loc.lat, loc.lon], { radius: 6, color: '#2fe0ff', weight: 2, fillOpacity: 0.7 }).addTo(map).bindTooltip('You');
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     loadRadarFrames();
@@ -527,6 +527,10 @@
   }
 
   function boot() {
+    // PWA: register service worker (install prompt + offline shell)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(function () {});
+    }
     $('refreshBtn').addEventListener('click', refresh);
     $('askBtn').addEventListener('click', function () {
       setStatus('Getting location…');
@@ -552,6 +556,10 @@
         reverseGeocode(p).then(function (name) { $('loc').textContent = name; });
         window._pendingRadarLoc = p;
         refresh();
+        // Try a fresh GPS fix in the background; if we've moved, re-center + reload
+        updateLocation(function (fresh) {
+          if (fresh) refresh();
+        });
       } catch (e) { showSetup(); }
     } else {
       showSetup();
