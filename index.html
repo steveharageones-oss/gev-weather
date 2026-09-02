@@ -200,12 +200,12 @@
     <div id="daily"></div>
   </section>
 
-  <div class="status-line" id="status"></div>
   <div style="text-align:center; margin-top: 6px;">
     <button class="refresh-btn" id="refreshBtn">↻ Refresh</button>
   </div>
 </div>
 
+<div class="status-line" id="status"></div>
 <footer>
   Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0)
   · Radar by <a href="https://mesonet.agron.iastate.edu/docs/nexrad_mosaic">Iowa State U. (NWS NEXRAD)</a>
@@ -260,7 +260,10 @@
   function reverseGeocode(loc) {
     var url = 'https://nominatim.openstreetmap.org/reverse?lat=' + loc.lat + '&lon=' + loc.lon +
               '&format=json&zoom=10';
-    return fetch(url, { headers: { 'Accept': 'application/json' } })
+    // 8s timeout — Nominatim rate-limits hard; a hang must never block the app
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    if (ctrl) setTimeout(function () { ctrl.abort(); }, 8000);
+    return fetch(url, { headers: { 'Accept': 'application/json' }, signal: ctrl ? ctrl.signal : undefined })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var a = d.address || {};
@@ -623,12 +626,12 @@
       navigator.geolocation.getCurrentPosition(function (pos) {
         var loc = { lat: +pos.coords.latitude.toFixed(4), lon: +pos.coords.longitude.toFixed(4) };
         store.setItem('gew_location', JSON.stringify(loc));
+        // Fire the weather load immediately — the location *label* resolves in
+        // parallel. A slow Nominatim must never delay the actual weather.
+        window._pendingRadarLoc = loc;
         setStatus('Loading weather…');
-        reverseGeocode(loc).then(function (name) {
-          $('loc').textContent = name;
-          window._pendingRadarLoc = loc;
-          return refresh();
-        });
+        refresh();
+        reverseGeocode(loc).then(function (name) { $('loc').textContent = name; });
       }, function (err) {
         setStatus('Location denied — enable it in browser settings', true);
       }, { enableHighAccuracy: false, timeout: 12000 });
