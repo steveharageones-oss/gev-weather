@@ -196,6 +196,11 @@
   </section>
 
   <section class="card">
+    <div class="strip-title">Today — hourly temperature</div>
+    <div id="hourly"></div>
+  </section>
+
+  <section class="card">
     <div class="strip-title">Next 7 days</div>
     <div id="daily"></div>
   </section>
@@ -279,6 +284,7 @@
       '&current=temperature_2m,apparent_temperature,precipitation,snowfall,weather_code,relative_humidity_2m,wind_speed_10m' +
       '&minutely_15=precipitation,snowfall,precipitation_probability' +
       '&daily=precipitation_sum,snowfall_sum,precipitation_probability_max' +
+      '&hourly=temperature_2m' +
       '&forecast_minutely_15=96' +
       '&forecast_days=7&timezone=auto' +
       '&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph';
@@ -473,6 +479,38 @@
     $('daily').innerHTML = out;
   }
 
+  function showHourly(h) {
+    // Today's remaining hours as a temperature sparkline strip.
+    var now = Date.now();
+    var start = 0;
+    for (var i = 0; i < h.time.length; i++) {
+      if (new Date(h.time[i]).getTime() + 3600e3 > now) { start = i; break; } // first hour not yet over
+    }
+    var hours = [];
+    for (var j = start; j < h.time.length; j++) {
+      var t = new Date(h.time[j]);
+      if (t.getDate() !== new Date(h.time[start]).getDate()) break; // stop at midnight
+      hours.push({ h: t.getHours(), f: h.temperature_2m[j] });
+    }
+    if (!hours.length) { $('hourly').innerHTML = '<div class="day-val">—</div>'; return; }
+    var lo = Math.min.apply(null, hours.map(function (x) { return x.f; }));
+    var hi = Math.max.apply(null, hours.map(function (x) { return x.f; }));
+    var span = Math.max(1, hi - lo);
+    var html = '<div style="display:flex;align-items:flex-end;gap:2px;height:64px;margin-top:6px;">';
+    for (var k = 0; k < hours.length; k++) {
+      var pct = 20 + 80 * (hours[k].f - lo) / span; // keep a visible floor
+      var isNow = k === 0;
+      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0;">' +
+        '<div style="font-size:0.6rem;color:#cfe8f5;margin-bottom:2px;white-space:nowrap;">' + Math.round(hours[k].f) + '°</div>' +
+        '<div style="width:100%;max-width:26px;height:' + Math.round(pct * 0.6) + 'px;border-radius:3px 3px 0 0;' +
+        'background:linear-gradient(180deg,#4db8ff 0%,#2a6f9e 100%);opacity:' + (isNow ? 1 : 0.75) + '"></div>' +
+        '<div style="font-size:0.55rem;color:#7fa8bc;margin-top:2px;white-space:nowrap;">' + hours[k].h + '</div>' +
+        '</div>';
+    }
+    html += '</div>';
+    $('hourly').innerHTML = html;
+  }
+
   // ---------- orchestration ----------
   var M = null; // minutely data
   var currentLoc = null;
@@ -483,6 +521,7 @@
     showChips(data.current);
     showStrip();
     showDaily(data.daily);
+    if (data.hourly && data.hourly.temperature_2m) showHourly(data.hourly);
     $('app').classList.remove('hidden');
     $('setup').classList.add('hidden');
     if (window._pendingRadarLoc && map === null) {
