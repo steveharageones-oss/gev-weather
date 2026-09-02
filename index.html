@@ -286,6 +286,79 @@
   }
 
   // ---------- rendering ----------
+  // NEXRAD n0q reflectivity palette (canonical NWS colors, verified against live tiles 2026-09-02).
+  // [r, g, b, intensity 1-6]; 1=drizzle 2=light 3=moderate 4=heavy 5=very heavy 6=extreme
+  var NEXRAD_PALETTE = [
+    [64,  96, 160, 1], [80, 160, 192, 1], [96, 208, 224, 1],  // light blues — drizzle
+    [8,  98,  10,  2], [24, 132, 16,  2], [48, 208, 80,  2],  // dark→bright green — light
+    [53, 214, 91,  3], [82, 214, 162, 3], [104, 214, 215, 3], // bright green — moderate
+    [255, 201, 0,  4], [255, 234, 0,  4],                     // yellow — heavy
+    [255, 160, 0,  5], [255, 192, 0,  5], [173, 0,  0,  5],   // orange / dark red
+    [255, 0,  0,   6], [234, 0,  0,  6], [120, 0,  0,  6]     // red — extreme
+  ];
+  function classifyNexradPixel(r, g, b) {
+    // Reject grays and near-grays first (basemap bleed, no-data) — NEXRAD precip
+    // colors are always saturated: one channel dominates or two are high vs low.
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx - mn < 40) return null;
+    var best = null, bestD = 1e9;
+    for (var i = 0; i < NEXRAD_PALETTE.length; i++) {
+      var p = NEXRAD_PALETTE[i];
+      var d = (r - p[0]) * (r - p[0]) + (g - p[1]) * (g - p[1]) + (b - p[2]) * (b - p[2]);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    // reject grays/whites/outliers that belong to basemap bleed or no-data
+    if (bestD > 9000) return null;
+    return best[3];
+  }
+
+  // Sample the latest NEXRAD mosaic at the user's location.
+  // Returns Promise<intensity 1-6> when radar shows precip, Promise<0> when dry, Promise<null> on failure.
+  function sampleRadarAt(loc) {
+    return new Promise(function (resolve) {
+      var z = 6;
+      var n = Math.pow(2, z);
+      var xtile = Math.floor((loc.lon + 180) / 360 * n);
+      var latRad = loc.lat * Math.PI / 180;
+      var ytile = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      var done = false;
+      var finish = function (v) { if (!done) { done = true; resolve(v); } };
+      img.onload = function () {
+        try {
+          var c = document.createElement('canvas');
+          c.width = 256; c.height = 256;
+          var ctx = c.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0);
+          // fractional position inside the tile (0..1)
+          var fx = (loc.lon + 180) / 360 * Math.pow(2, z) % 1;
+          var latRad2 = loc.lat * Math.PI / 180;
+          var fy = (1 - Math.log(Math.tan(latRad2) + 1 / Math.cos(latRad2)) / Math.PI) / 2 * Math.pow(2, z) % 1;
+          var px = Math.min(255, Math.floor(fx * 256));
+          var py = Math.min(255, Math.floor(fy * 256));
+          // scan a small 7x7 neighborhood — radar pixel = ~1-2km at z6
+          var best = 0;
+          for (var dy = -3; dy <= 3; dy++) {
+            for (var dx = -3; dx <= 3; dx++) {
+              var xx = px + dx, yy = py + dy;
+              if (xx < 0 || yy < 0 || xx > 255 || yy > 255) continue;
+              var d = ctx.getImageData(xx, yy, 1, 1).data;
+              if (d[3] < 8) continue;
+              if (d[0] < 8 && d[1] < 8 && d[2] < 8) continue; // transparent/no-data
+              var v = classifyNexradPixel(d[0], d[1], d[2]);
+              if (v && v > best) best = v;
+            }
+          }
+          finish(best); // 0 = radar dry here, 1-6 = echo intensity
+        } catch (e) { finish(null); }
+      };
+      img.onerror = function () { finish(null); };
+      img.src = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/' + z + '/' + xtile + '/' + ytile + '.png';
+      setTimeout(function () { finish(null); }, 8000); // hard timeout — never hang the answer
+    });
+  }
+
   function showNow(cur) {
     var info = WMO[cur.weather_code] || ['—', '🌡️'];
     $('nowIcon').textContent = info[1];
@@ -310,6 +383,19 @@
     }
     var detail = info[0] + ' · ' + Math.round(cur.temperature_2m) + '°F (feels ' + Math.round(cur.apparent_temperature) + '°)';
     $('nowDetail').textContent = detail;
+    // Doppler cross-check: sample actual NEXRAD at our location.
+    // Radar beats the model when the model grid says 0 but echoes are overhead.
+    var loc = JSON.parse(store.getItem('gew_location') || 'null');
+    if (loc && loc.lat) {
+      sampleRadarAt(loc).then(function (v) {
+        if (v === null) return; // radar unavailable — keep model answer
+        if (v > 0 && !precipNow && !snowing) {
+          var labels = [null, 'drizzle', 'light', 'moderate', 'heavy', 'very heavy', 'extreme'];
+          ans.textContent = '🌧️ Radar shows ' + labels[v] + ' precip over you now';
+          ans.className = 'now-answer raining';
+        }
+      });
+    }
   }
 
   function findNextPrecip() {
