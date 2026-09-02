@@ -1,5 +1,5 @@
 /* God's Eye Weather service worker */
-var CACHE = 'gew-v1';
+var CACHE = 'gew-v2';
 var SHELL = ['./', './index.html', './manifest.json', './icon.svg', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {
