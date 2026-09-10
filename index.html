@@ -100,6 +100,10 @@
   .day-row.today { font-weight: 600; }
   .day-name { width: 46px; flex-shrink: 0; font-size: 0.88rem; color: var(--text); }
   .day-row.today .day-name { color: var(--accent); }
+  .day-icon { width: 28px; flex-shrink: 0; text-align: center; font-size: 1rem; }
+  .day-temp { width: 78px; flex-shrink: 0; font-size: 0.82rem; text-align: right; }
+  .day-temp .hi { color: var(--text); font-weight: 600; }
+  .day-temp .lo { color: var(--dim); }
   .day-bar-wrap { flex: 1; height: 8px; background: rgba(58,80,96,0.4); border-radius: 4px; overflow: hidden; min-width: 0; }
   .day-bar { height: 100%; border-radius: 3px; background: var(--rain); min-width: 0; }
   .day-bar.snow { background: var(--snow); }
@@ -130,6 +134,33 @@
     background: var(--accent); color: #05131c; border: none; border-radius: 10px;
     padding: 12px 28px; font-size: 1rem; font-weight: 700; cursor: pointer;
   }
+  .alert-card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-left: 4px solid var(--alert-color, var(--warn));
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .alert-card.warn  { --alert-color: #ffd97a; }
+  .alert-card.watch { --alert-color: #ffb347; }
+  .alert-card.warning { --alert-color: #ff5a5a; }
+  .alert-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    margin-bottom: 4px;
+  }
+  .alert-event { font-size: 0.95rem; font-weight: 700; color: var(--alert-color); }
+  .alert-until { font-size: 0.72rem; color: var(--dim); white-space: nowrap; }
+  .alert-desc {
+    font-size: 0.82rem; color: var(--text); line-height: 1.45;
+    max-height: 3.9em; overflow: hidden; position: relative; cursor: pointer;
+  }
+  .alert-desc.open { max-height: none; }
+  .alert-desc:not(.open)::after {
+    content: '… more'; position: absolute; right: 0; bottom: 0;
+    background: var(--card); color: var(--accent); padding-left: 6px; font-size: 0.78rem;
+  }
+  .alert-areas { font-size: 0.72rem; color: var(--dim); margin-top: 5px; }
 </style>
 </head>
 <body>
@@ -146,6 +177,8 @@
 </div>
 
 <div id="app" class="hidden">
+  <div id="alerts"></div>
+
   <section class="card" id="nowCard">
     <div class="now-main">
       <div class="now-icon" id="nowIcon">🌡️</div>
@@ -283,7 +316,7 @@
       '?latitude=' + loc.lat + '&longitude=' + loc.lon +
       '&current=temperature_2m,apparent_temperature,precipitation,snowfall,weather_code,relative_humidity_2m,wind_speed_10m' +
       '&minutely_15=precipitation,snowfall,precipitation_probability' +
-      '&daily=precipitation_sum,snowfall_sum,precipitation_probability_max' +
+      '&daily=precipitation_sum,snowfall_sum,precipitation_probability_max,temperature_2m_max,temperature_2m_min,weather_code' +
       '&hourly=temperature_2m' +
       '&forecast_minutely_15=96' +
       '&forecast_days=7&timezone=auto' +
@@ -468,8 +501,12 @@
       var total = (d.precipitation_sum[i] || 0) + (d.snowfall_sum[i] || 0) * 8;
       var isSnowDay = (d.snowfall_sum[i] || 0) > 0;
       var pct = Math.min(100, total * 22);
+      var icon = (wmo(d.weather_code ? d.weather_code[i] : 0))[1];
       out += '<div class="day-row' + (i === 0 ? ' today' : '') + '">' +
         '<span class="day-name">' + label + '</span>' +
+        '<span class="day-icon" title="' + ((wmo(d.weather_code ? d.weather_code[i] : 0))[0]) + '">' + icon + '</span>' +
+        '<span class="day-temp"><span class="hi">' + Math.round(d.temperature_2m_max[i]) + '°</span>' +
+        ' <span class="lo">' + Math.round(d.temperature_2m_min[i]) + '°</span></span>' +
         '<div class="day-bar-wrap"><div class="day-bar' + (isSnowDay ? ' snow' : '') +
         '" style="width:' + pct + '%"></div></div>' +
         '<span class="day-val">' + (d.precipitation_sum[i] || 0).toFixed(2) + '"</span>' +
@@ -534,10 +571,70 @@
     setTimeout(function () { if (map) map.invalidateSize(); }, 250);
   }
 
+  // ---------- NWS active alerts for our exact point ----------
+  function alertClass(sev, event) {
+    var e = (event || '').toLowerCase();
+    if (e.indexOf('warning') !== -1) return 'warning';
+    if (e.indexOf('watch') !== -1) return 'watch';
+    if (sev === 'Extreme' || sev === 'Severe') return 'warning';
+    return 'warn'; // advisories & statements
+  }
+  function esc(s) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(s || ''));
+    return d.innerHTML;
+  }
+  function untilLabel(iso) {
+    if (!iso) return '';
+    var ms = new Date(iso) - Date.now();
+    if (isNaN(ms) || ms <= 0) return 'expired';
+    var mins = Math.round(ms / 60000);
+    if (mins < 60) return 'until +' + mins + ' min';
+    var hrs = Math.floor(mins / 60), rem = mins % 60;
+    return 'until +' + hrs + 'h' + (rem ? ' ' + rem + 'm' : '');
+  }
+  function loadAlerts(loc) {
+    // NWS alerts for this exact point; silent-fail — alerts are additive, never block weather
+    var url = 'https://api.weather.gov/alerts/active?point=' + loc.lat + ',' + loc.lon;
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    if (ctrl) setTimeout(function () { ctrl.abort(); }, 8000);
+    return fetch(url, { headers: { 'Accept': 'application/geo+json' }, signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        var feats = d.features || [];
+        if (!feats.length) { $('alerts').innerHTML = ''; return; }
+        // sort: warnings first, then by soonest expiry
+        feats.sort(function (a, b) {
+          var ca = alertClass(a.properties.severity, a.properties.event) === 'warning' ? 0 : 1;
+          var cb = alertClass(b.properties.severity, b.properties.event) === 'warning' ? 0 : 1;
+          return ca - cb;
+        });
+        var html = '';
+        for (var i = 0; i < feats.length; i++) {
+          var p = feats[i].properties;
+          var cls = alertClass(p.severity, p.event);
+          html += '<div class="alert-card ' + cls + '">' +
+            '<div class="alert-head"><span class="alert-event">⚠ ' + esc(p.event || 'Weather alert') + '</span>' +
+            '<span class="alert-until">' + esc(untilLabel(p.expires)) + '</span></div>' +
+            '<div class="alert-desc" title="tap to expand">' + esc((p.description || '').replace(/\n+/g, ' ')) + '</div>' +
+            '<div class="alert-areas">' + esc(p.areaDesc || '') + '</div>' +
+            '</div>';
+        }
+        $('alerts').innerHTML = html;
+        // tap a truncated description to expand/collapse
+        var descs = document.querySelectorAll('.alert-desc');
+        for (var j = 0; j < descs.length; j++) {
+          descs[j].addEventListener('click', function () { this.classList.toggle('open'); });
+        }
+      })
+      .catch(function () { /* alerts unavailable — leave empty, don't nag */ });
+  }
+
   function refresh() {
     var loc = JSON.parse(store.getItem('gew_location') || '{}');
     if (!loc.lat) { showSetup(); return; }
     setStatus('Loading…');
+    loadAlerts(loc); // parallel — never blocks the weather render
     loadWeather(loc).then(function (data) {
       renderAll(data);
       setStatus('Updated ' + new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}));
