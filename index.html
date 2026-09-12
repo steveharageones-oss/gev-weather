@@ -533,13 +533,13 @@
     var lo = Math.min.apply(null, hours.map(function (x) { return x.f; }));
     var hi = Math.max.apply(null, hours.map(function (x) { return x.f; }));
     var span = Math.max(1, hi - lo);
-    var html = '<div style="display:flex;align-items:flex-end;gap:2px;height:64px;margin-top:6px;">';
+    var html = '<div style="display:flex;align-items:flex-end;gap:2px;height:84px;margin-top:6px;padding-top:18px;box-sizing:border-box;">';
     for (var k = 0; k < hours.length; k++) {
       var pct = 20 + 80 * (hours[k].f - lo) / span; // keep a visible floor
       var isNow = k === 0;
       html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0;">' +
         '<div style="font-size:0.6rem;color:#cfe8f5;margin-bottom:2px;white-space:nowrap;">' + Math.round(hours[k].f) + '°</div>' +
-        '<div style="width:100%;max-width:26px;height:' + Math.round(pct * 0.6) + 'px;border-radius:3px 3px 0 0;' +
+        '<div style="width:100%;max-width:26px;height:' + Math.round(pct * 0.45) + 'px;border-radius:3px 3px 0 0;' +
         'background:linear-gradient(180deg,#4db8ff 0%,#2a6f9e 100%);opacity:' + (isNow ? 1 : 0.75) + '"></div>' +
         '<div style="font-size:0.55rem;color:#7fa8bc;margin-top:2px;white-space:nowrap;">' + hours[k].h + '</div>' +
         '</div>';
