@@ -161,6 +161,43 @@
     background: var(--card); color: var(--accent); padding-left: 6px; font-size: 0.78rem;
   }
   .alert-areas { font-size: 0.72rem; color: var(--dim); margin-top: 5px; }
+
+  /* ---------- tabs ---------- */
+  .tabbar {
+    display: flex; gap: 6px; margin-bottom: 12px;
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 10px; padding: 4px;
+  }
+  .tab {
+    flex: 1; background: transparent; border: none; color: var(--dim);
+    font-family: inherit; font-size: 0.86rem; font-weight: 600;
+    padding: 9px 8px; border-radius: 7px; cursor: pointer; letter-spacing: 0.3px;
+  }
+  .tab.active { background: rgba(47,224,255,0.13); color: var(--accent); }
+
+  /* ---------- traffic ---------- */
+  .badge {
+    display: inline-block; font-size: 0.74rem; border-radius: 999px;
+    padding: 4px 11px; margin-top: 10px; border: 1px solid; line-height: 1.45;
+  }
+  .badge.alert { color: #ffb347; border-color: rgba(255,179,71,0.45); background: rgba(255,179,71,0.09); }
+  .badge.ok    { color: #6ee7a0; border-color: rgba(110,231,160,0.35); background: rgba(110,231,160,0.07); }
+  .flow-line {
+    display: flex; align-items: baseline; gap: 8px; padding: 9px 0;
+    border-bottom: 1px solid rgba(28,48,64,0.7); font-size: 0.85rem;
+  }
+  .flow-line:last-child { border-bottom: none; }
+  .flow-line .k { color: var(--dim); width: 104px; flex-shrink: 0; font-size: 0.76rem; }
+  .flow-line .v { flex: 1; }
+  .flow-line .v b { font-weight: 700; }
+  .speed-good { color: #6ee7a0; } .speed-mid { color: var(--warn); } .speed-bad { color: #ff8a8a; }
+  .inc-desc { font-size: 0.84rem; color: var(--text); line-height: 1.45; }
+  .inc-meta { font-size: 0.74rem; color: var(--dim); margin-top: 4px; }
+  .inc-dist { font-size: 0.72rem; color: var(--dim); white-space: nowrap; }
+  .more-note { font-size: 0.74rem; color: var(--dim); text-align: center; margin-top: 10px; }
+  .keynote { font-size: 0.82rem; color: var(--dim); line-height: 1.6; }
+  .keynote code { background: rgba(47,224,255,0.09); padding: 1px 5px; border-radius: 4px; color: var(--text); font-size: 0.78rem; }
+  #trafficMap { height: 300px; border-radius: 8px; overflow: hidden; position: relative; z-index: 1; }
 </style>
 </head>
 <body>
@@ -177,6 +214,12 @@
 </div>
 
 <div id="app" class="hidden">
+  <div class="tabbar">
+    <button class="tab active" id="tabWeather">🌧️ Weather</button>
+    <button class="tab" id="tabTraffic">🚗 Traffic</button>
+  </div>
+
+  <div id="viewWeather">
   <div id="alerts"></div>
 
   <section class="card" id="nowCard">
@@ -237,6 +280,47 @@
     <div class="strip-title">Next 7 days</div>
     <div id="daily"></div>
   </section>
+  </div><!-- /#viewWeather -->
+
+  <div id="viewTraffic" class="hidden">
+    <div id="trafficEmpty" class="card keynote hidden">
+      <div class="strip-title">Traffic needs a key</div>
+      This build has no TomTom API key baked in — the deployed version gets one injected from a
+      GitHub Actions secret at deploy time. For local testing, run
+      <code>localStorage.gew_tomtom_key = 'YOUR_KEY'</code> in the console and hit Refresh.
+      A key is free at my.tomtom.com (freemium: 50,000 tile and 2,500 non-tile requests a day).
+    </div>
+
+    <section class="card" id="trafficNowCard">
+      <div class="strip-title">Traffic right now</div>
+      <div id="trafficNow"></div>
+      <div id="trafficBadge"></div>
+    </section>
+
+    <section class="card" id="trafficIncCard">
+      <div class="strip-title">Incidents near you</div>
+      <div id="trafficIncidents"></div>
+    </section>
+
+    <section class="card">
+      <div class="strip-title">Traffic map <span style="text-transform:none;letter-spacing:0">· <span id="trafficMapTime">—</span></span></div>
+      <div id="trafficMap"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;align-items:center;justify-content:center;flex-wrap:wrap;">
+        <button class="refresh-btn" id="tFlowRel">Relative</button>
+        <button class="refresh-btn" id="tFlowAbs">Absolute</button>
+        <button class="refresh-btn" id="tFull">⛶ Full</button>
+      </div>
+      <div style="font-size:0.68rem;color:#7fa8bc;margin-top:6px;line-height:1.5">
+        Colour = measured road speed. <b>Relative</b> compares each road to its own free-flow speed,
+        so green means moving normally and red means genuinely jammed. <b>Absolute</b> shows raw mph,
+        so a slow residential street reads red even when that is normal for it.
+      </div>
+    </section>
+
+    <div style="font-size:0.68rem;color:#7fa8bc;line-height:1.5;text-align:center">
+      Traffic flow and incident data © TomTom
+    </div>
+  </div>
 
   <div style="text-align:center; margin-top: 6px;">
     <button class="refresh-btn" id="refreshBtn">↻ Refresh</button>
@@ -249,12 +333,18 @@
   · Radar by <a href="https://mesonet.agron.iastate.edu/docs/nexrad_mosaic">Iowa State U. (NWS NEXRAD)</a>
   · Map tiles © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors
   · Location by <a href="https://nominatim.openstreetmap.org/">OpenStreetMap Nominatim</a>
+  · Traffic &amp; incidents © <a href="https://www.tomtom.com/copyright/">TomTom</a>
 </footer>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
   integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
   integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<!-- TomTom key. The placeholder below is replaced at deploy time by
+     .github/workflows/deploy.yml from the GEW_TOMTOM_KEY repository secret.
+     Never commit a real key here. For local dev use localStorage.gew_tomtom_key. -->
+<script>window.GEW_TOMTOM_KEY = '__GEW_TOMTOM_KEY__';</script>
 
 <script>
 (function () {
@@ -633,6 +723,7 @@
   function refresh() {
     var loc = JSON.parse(store.getItem('gew_location') || '{}');
     if (!loc.lat) { showSetup(); return; }
+    currentLoc = loc;
     setStatus('Loading…');
     loadAlerts(loc); // parallel — never blocks the weather render
     loadWeather(loc).then(function (data) {
@@ -641,6 +732,7 @@
     }).catch(function (err) {
       setStatus('Error: ' + err.message, true);
     });
+    if (activeTab === 'traffic') loadTraffic(loc); // only when its tab is up — saves quota
   }
 
   // Fresh GPS fix on boot; quietly falls back to saved coords if denied/timeout.
@@ -710,7 +802,7 @@
   // Fullscreen: map gets a dark backdrop + full viewport height
   (function () {
     var s = document.createElement('style');
-    s.textContent = '#map:fullscreen { height: 100vh !important; border-radius: 0; background: #0a1118; }';
+    s.textContent = '#map:fullscreen, #trafficMap:fullscreen { height: 100vh !important; border-radius: 0; background: #0a1118; }';
     document.head.appendChild(s);
   })();
 
@@ -751,12 +843,313 @@
     var b = $('radarPlay'); if (b) b.textContent = '▶ Play';
   }
 
+  // ---------- traffic (TomTom Traffic API) ----------
+  // Key arrives as window.GEW_TOMTOM_KEY (injected at deploy from a GitHub Actions
+  // secret) or localStorage.gew_tomtom_key for local dev. No real key lives in this repo.
+  var TT_BASE = 'https://api.tomtom.com';
+  var TT_SPAN = 0.30;   // bbox side in degrees — ~33 x 25 km, inside TomTom's 10,000 km2 cap
+  var TT_NEAR_KM = 3;   // "near you" radius used by the cross-check
+
+  function ttKey() {
+    var k = '';
+    try { k = store.getItem('gew_tomtom_key') || ''; } catch (e) {}
+    if (!k && window.GEW_TOMTOM_KEY) k = window.GEW_TOMTOM_KEY;
+    k = (k || '').trim();
+    // an unreplaced deploy placeholder, or anything implausibly short, means "no key"
+    if (k.indexOf('__GEW_') === 0 || k.length < 20) return '';
+    return k;
+  }
+
+  // iconCategory / magnitudeOfDelay enums taken verbatim from the TomTom Traffic API v5 schema
+  var TT_ICON = {
+    0:  ['Unknown', '❓'], 1: ['Accident', '💥'], 2: ['Fog', '🌫️'],
+    3:  ['Dangerous conditions', '⚠️'], 4: ['Rain', '🌧️'], 5: ['Ice', '🧊'],
+    6:  ['Jammed', '🚗'], 7: ['Lane closed', '🚧'], 8: ['Road closed', '⛔'],
+    9:  ['Road works', '🚧'], 10: ['Wind', '💨'], 11: ['Flooding', '🌊'],
+    14: ['Broken down vehicle', '🆘']
+  };
+  var TT_MAG = {
+    0: ['warn', 'delay unknown'], 1: ['warn', 'minor delay'],
+    2: ['watch', 'moderate delay'], 3: ['warning', 'major delay'],
+    4: ['warning', 'closed / indefinite']
+  };
+  var TT_FRC = {
+    FRC0: 'motorway', FRC1: 'major road', FRC2: 'major road', FRC3: 'secondary road',
+    FRC4: 'local road', FRC5: 'local road', FRC6: 'minor road', FRC7: 'minor road', FRC8: 'minor road'
+  };
+
+  function ttBoxKm(loc, span) {
+    return { ns: Math.round(span * 110.6), ew: Math.round(span * 111.3 * Math.cos(loc.lat * Math.PI / 180)) };
+  }
+  function ttBbox(loc, span) {
+    var h = span / 2;
+    return (loc.lon - h).toFixed(4) + ',' + (loc.lat - h).toFixed(4) + ',' +
+           (loc.lon + h).toFixed(4) + ',' + (loc.lat + h).toFixed(4);
+  }
+  function ttPts(inc) {
+    var g = inc.geometry && inc.geometry.coordinates;
+    if (!g || !g.length) return [];
+    return typeof g[0] === 'number' ? [g] : g; // Point vs LineString
+  }
+  function ttDistKm(loc, inc) {
+    var pts = ttPts(inc);
+    if (!pts.length) return null;
+    var cosLat = Math.cos(loc.lat * Math.PI / 180), best = Infinity;
+    for (var i = 0; i < pts.length; i++) {
+      var dx = (pts[i][0] - loc.lon) * 111.32 * cosLat;
+      var dy = (pts[i][1] - loc.lat) * 110.57;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+  function ttSpeedClass(r) { return r >= 0.85 ? 'speed-good' : r >= 0.6 ? 'speed-mid' : 'speed-bad'; }
+  function ttSpeedWord(r) {
+    return r >= 0.85 ? 'flowing freely' : r >= 0.6 ? 'slower than normal' : r >= 0.35 ? 'heavy' : 'jammed';
+  }
+  function ttFt(m) { return m < 530 ? Math.round(m * 3.28084) + ' ft' : (m / 1609.34).toFixed(1) + ' mi'; }
+  // Lower rank = shown first. What delays you beats what is merely notable.
+  var TT_RANK = { 1: 0, 6: 1, 7: 2, 14: 3, 8: 4, 9: 5 }; // accident, jam, lane closed, broken down, closed, works
+  function ttRank(inc) {
+    var r = TT_RANK[inc.properties.iconCategory];
+    return r === undefined ? 6 : r;
+  }
+
+  function flowAt(loc, zoom) {
+    var url = TT_BASE + '/traffic/services/4/flowSegmentData/absolute/' + zoom + '/json' +
+              '?point=' + loc.lat + ',' + loc.lon + '&unit=MPH&key=' + ttKey();
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('flow HTTP ' + r.status);
+      return r.json();
+    }).then(function (d) { return d.flowSegmentData || null; });
+  }
+
+  var TT_FIELDS = '{incidents{type,geometry{type,coordinates},properties{iconCategory,' +
+    'magnitudeOfDelay,events{description,iconCategory},from,to,length,delay,roadNumbers,timeValidity}}}';
+
+  function incidentsAt(loc, span) {
+    var url = TT_BASE + '/traffic/services/5/incidentDetails?key=' + ttKey() +
+              '&bbox=' + ttBbox(loc, span) +
+              '&language=en-US&timeValidityFilter=present' +
+              '&categoryFilter=1,6,7,8,9,14' +
+              '&fields=' + encodeURIComponent(TT_FIELDS);
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('incidents HTTP ' + r.status);
+      return r.json();
+    }).then(function (d) { return d.incidents || []; });
+  }
+
+  // ---------- traffic rendering ----------
+  function showTrafficNow(flowMain, flowLocal, incidents, loc) {
+    var rows = '', primaryRatio = null;
+
+    function addRow(label, f) {
+      if (!f) return;
+      var ratio = f.freeFlowSpeed > 0 ? f.currentSpeed / f.freeFlowSpeed : 1;
+      if (label === 'Nearest main road') primaryRatio = ratio;
+      var val = f.roadClosure
+        ? '<b class="speed-bad">closed</b>'
+        : '<b class="' + ttSpeedClass(ratio) + '">' + Math.round(f.currentSpeed) + ' mph</b> · ' + ttSpeedWord(ratio);
+      rows += '<div class="flow-line">' +
+        '<span class="k">' + label + '</span>' +
+        '<span class="v" title="' + esc(TT_FRC[f.frc] || 'road') + '">' + val +
+        ' <span style="color:var(--dim);font-size:0.76rem">(free-flow ' +
+        Math.round(f.freeFlowSpeed) + ' mph)</span></span></div>';
+    }
+    addRow('Nearest main road', flowMain);
+    addRow('Your street', flowLocal);
+    $('trafficNow').innerHTML = rows || '<div class="keynote">No road segment found near your location.</div>';
+
+    // Cross-check — same spirit as radar-vs-model in the weather tab, but here it is
+    // probe-derived road speeds vs the curated incident feed. Disagreement is the signal.
+    var reported = (incidents || []).filter(function (i) {
+      var d = ttDistKm(loc, i);
+      if (d === null || d > TT_NEAR_KM) return false;
+      var c = i.properties.iconCategory;
+      return c === 1 || c === 6 || c === 7 || c === 8; // accident, jam, lane closed, road closed
+    });
+    var msg = '', kind = 'ok';
+    if (primaryRatio !== null && primaryRatio < 0.6 && !reported.length) {
+      msg = '⚠ Slow on your nearest main road with no incident reported within ' + TT_NEAR_KM +
+            ' km — likely unreported congestion.';
+      kind = 'alert';
+    } else if (reported.length && primaryRatio !== null && primaryRatio >= 0.85) {
+      msg = '⚠ ' + reported.length + ' incident' + (reported.length > 1 ? 's' : '') +
+            ' reported within ' + TT_NEAR_KM + ' km, but sensors show traffic moving — clearing, or off your road.';
+      kind = 'alert';
+    } else if (reported.length) {
+      msg = reported.length + ' reported incident' + (reported.length > 1 ? 's' : '') +
+            ' within ' + TT_NEAR_KM + ' km, consistent with sensor speeds.';
+    }
+    $('trafficBadge').innerHTML = msg ? '<span class="badge ' + kind + '">' + esc(msg) + '</span>' : '';
+  }
+
+  function showTrafficIncidents(incidents, loc) {
+    var box = $('trafficIncidents');
+    if (!incidents.length) {
+      var km = ttBoxKm(loc, TT_SPAN);
+      box.innerHTML = '<div class="keynote">Nothing reported in the ' + km.ew + ' × ' + km.ns +
+        ' km area around you. Quiet roads.</div>';
+      return;
+    }
+    // What actually delays you outranks what is merely notable. TomTom's road-closure
+    // records are numerous and mostly planned work, so they sit below live jams and
+    // accidents rather than flooding the top of the list.
+    var ranked = incidents.map(function (i) { return { inc: i, d: ttDistKm(loc, i) }; })
+      .sort(function (a, b) {
+        var ra = ttRank(a.inc), rb = ttRank(b.inc);
+        if (ra !== rb) return ra - rb;
+        return (a.d === null ? 1e9 : a.d) - (b.d === null ? 1e9 : b.d); // then nearest
+      });
+
+    // The same closure arrives once per carriageway ("A -> B" and "B -> A"). Keep one.
+    var seen = {}, deduped = [];
+    ranked.forEach(function (e) {
+      var p = e.inc.properties;
+      var key = [p.iconCategory, p.from || '', p.to || '',
+                 (p.roadNumbers || []).join(',')].sort().join('|');
+      if (seen[key]) { seen[key].twinned = true; return; }
+      seen[key] = e; deduped.push(e);
+    });
+    ranked = deduped;
+    var html = '';
+    ranked.slice(0, 5).forEach(function (e) {
+      var p = e.inc.properties;
+      var cat = TT_ICON[p.iconCategory] || TT_ICON[0];
+      var mag = TT_MAG[p.magnitudeOfDelay] || TT_MAG[0];
+      var where = [p.from, p.to].filter(Boolean).join(' → ');
+      var bits = [];
+      if (p.roadNumbers && p.roadNumbers.length) bits.push('on ' + p.roadNumbers.join(', '));
+      if (p.delay) bits.push('+' + Math.round(p.delay / 60) + ' min');
+      if (p.length) bits.push(ttFt(p.length));
+      var evs = (p.events || []).map(function (x) { return x.description; }).filter(Boolean);
+      html += '<div class="alert-card ' + mag[0] + '">' +
+        '<div class="alert-head"><span class="alert-event">' + cat[1] + ' ' + esc(cat[0]) + '</span>' +
+        '<span class="inc-dist">' + (e.d === null ? '' : e.d.toFixed(1) + ' km') + '</span></div>' +
+        (where ? '<div class="inc-desc">' + esc(where) + '</div>' : '') +
+        '<div class="inc-meta">' + esc(mag[1]) + (bits.length ? ' · ' + esc(bits.join(' · ')) : '') + '</div>' +
+        (evs.length ? '<div class="alert-areas">' + esc(evs.join(' · ')) + '</div>' : '') +
+      '</div>';
+    });
+    if (ranked.length > 5) {
+      html += '<div class="more-note">+ ' + (ranked.length - 5) +
+        ' more in the queried area, mostly closures and road works</div>';
+    }
+    box.innerHTML = html;
+  }
+
+  // ---------- traffic map ----------
+  var tmap = null, tFlowLayer = null, tIncLayer = null, tFlowStyle = 'relative';
+
+  function ttFlowUrl(style) {
+    return TT_BASE + '/traffic/map/4/tile/flow/' + style + '/{z}/{x}/{y}.png?key=' + ttKey();
+  }
+  function trafficMapInit(loc) {
+    if (tmap) { tmap.setView([loc.lat, loc.lon], 11); return; }
+    tmap = L.map('trafficMap', { zoomControl: false, maxZoom: 16, minZoom: 6 }).setView([loc.lat, loc.lon], 11);
+    L.tileLayer(TT_BASE + '/map/1/tile/basic/main/{z}/{x}/{y}.png?key=' + ttKey(),
+      { maxZoom: 16, attribution: '&copy; <a href="https://www.tomtom.com/copyright/">TomTom</a>' }).addTo(tmap);
+    L.circleMarker([loc.lat, loc.lon], { radius: 6, color: '#2fe0ff', weight: 2, fillOpacity: 0.7 })
+      .addTo(tmap).bindTooltip('You');
+    L.control.zoom({ position: 'bottomright' }).addTo(tmap);
+    tFlowLayer = L.tileLayer(ttFlowUrl(tFlowStyle), { opacity: 0.9, maxZoom: 16, minZoom: 6 }).addTo(tmap);
+    tIncLayer = L.layerGroup().addTo(tmap);
+    $('tFlowRel').style.color = 'var(--accent)';
+    setTimeout(function () { tmap.invalidateSize(); }, 150);
+    document.addEventListener('fullscreenchange', function () {
+      setTimeout(function () { tmap.invalidateSize(); }, 120);
+    });
+  }
+  function trafficMapDraw(loc, incidents) {
+    if (!tmap || !tIncLayer) return;
+    tIncLayer.clearLayers();
+    (incidents || []).forEach(function (inc) {
+      var p = inc.properties, pts = ttPts(inc);
+      if (!pts.length) return;
+      var mag = p.magnitudeOfDelay || 0;
+      var col = mag >= 3 ? '#ff5a5a' : mag === 2 ? '#ffb347' : '#ffd97a';
+      var label = (TT_ICON[p.iconCategory] || TT_ICON[0])[0] +
+        (p.roadNumbers && p.roadNumbers.length ? ' · ' + p.roadNumbers.join(', ') : '');
+      L.polyline(pts.map(function (c) { return [c[1], c[0]]; }), { color: col, weight: 5, opacity: 0.9 })
+        .addTo(tIncLayer).bindPopup(esc(label));
+    });
+  }
+  function setFlowStyle(s) {
+    tFlowStyle = s;
+    $('tFlowRel').style.color = s === 'relative' ? 'var(--accent)' : '';
+    $('tFlowAbs').style.color = s === 'absolute' ? 'var(--accent)' : '';
+    if (!tmap) return;
+    if (tFlowLayer) tmap.removeLayer(tFlowLayer);
+    tFlowLayer = L.tileLayer(ttFlowUrl(s), { opacity: 0.9, maxZoom: 16, minZoom: 6 }).addTo(tmap);
+  }
+
+  // ---------- tabs + traffic orchestration ----------
+  var activeTab = 'weather', trafficLoaded = false;
+
+  function showTab(name) {
+    activeTab = name;
+    var isWeather = name === 'weather';
+    $('tabWeather').classList.toggle('active', isWeather);
+    $('tabTraffic').classList.toggle('active', !isWeather);
+    $('viewWeather').classList.toggle('hidden', !isWeather);
+    $('viewTraffic').classList.toggle('hidden', isWeather);
+    if (isWeather) {
+      if (map) setTimeout(function () { map.invalidateSize(); }, 60);
+    } else {
+      if (tmap) setTimeout(function () { tmap.invalidateSize(); }, 60);
+      if (!trafficLoaded && currentLoc) loadTraffic(currentLoc);
+    }
+  }
+
+  function loadTraffic(loc) {
+    if (!loc || !loc.lat) return;
+    if (!ttKey()) {
+      $('trafficEmpty').classList.remove('hidden');
+      $('trafficNowCard').classList.add('hidden');
+      $('trafficIncCard').classList.add('hidden');
+      trafficLoaded = true;
+      return;
+    }
+    $('trafficEmpty').classList.add('hidden');
+    $('trafficNowCard').classList.remove('hidden');
+    $('trafficIncCard').classList.remove('hidden');
+    $('trafficNow').innerHTML = '<div class="keynote">Reading road speeds…</div>';
+    $('trafficBadge').innerHTML = '';
+    $('trafficIncidents').innerHTML = '<div class="keynote">Loading incidents…</div>';
+    Promise.all([
+      flowAt(loc, 8).catch(function () { return null; }),   // nearest main road
+      flowAt(loc, 10).catch(function () { return null; }),  // your street
+      incidentsAt(loc, TT_SPAN).catch(function () { return []; })
+    ]).then(function (r) {
+      showTrafficNow(r[0], r[1], r[2], loc);
+      showTrafficIncidents(r[2], loc);
+      trafficMapInit(loc);
+      trafficMapDraw(loc, r[2]);
+      $('trafficMapTime').textContent = 'updated ' +
+        new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      setTimeout(function () { if (tmap) tmap.invalidateSize(); }, 150);
+      trafficLoaded = true;
+    });
+  }
+
   function boot() {
     // PWA: register service worker (install prompt + offline shell)
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(function () {});
     }
     $('refreshBtn').addEventListener('click', refresh);
+    $('tabWeather').addEventListener('click', function () { showTab('weather'); });
+    $('tabTraffic').addEventListener('click', function () { showTab('traffic'); });
+    $('tFlowRel').addEventListener('click', function () { setFlowStyle('relative'); });
+    $('tFlowAbs').addEventListener('click', function () { setFlowStyle('absolute'); });
+    $('tFull').addEventListener('click', function () {
+      var el = document.getElementById('trafficMap');
+      if (!document.fullscreenElement) {
+        if (el.requestFullscreen) el.requestFullscreen().catch(function () {});
+      } else {
+        document.exitFullscreen();
+      }
+    });
     $('askBtn').addEventListener('click', function () {
       setStatus('Getting location…');
       navigator.geolocation.getCurrentPosition(function (pos) {

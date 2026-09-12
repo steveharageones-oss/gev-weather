@@ -22,6 +22,22 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Inject TomTom API key
+        env:
+          GEW_KEY: ${{ secrets.GEW_TOMTOM_KEY }}
+        run: |
+          if [ -z "$GEW_KEY" ]; then
+            echo "::warning::GEW_TOMTOM_KEY secret is not set - the traffic tab will show its setup note."
+          else
+            sed -i "s|__GEW_TOMTOM_KEY__|$GEW_KEY|" index.html
+            if grep -q "__GEW_TOMTOM_KEY__" index.html; then
+              echo "::error::TomTom key placeholder survived injection."
+              exit 1
+            fi
+            echo "TomTom key injected into index.html."
+          fi
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
